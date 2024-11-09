@@ -1,0 +1,30 @@
+{
+  "name": "ats-checker",
+  "version": "1.0.0",
+  "description": "Ats Scanner and checker.",
+  "main": "server.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Tirtha2001/ATS-Checker.git"
+  },
+  "keywords": [
+    "ATS",
+    "Node"
+  ],
+  "author": "RR",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/Tirtha2001/ATS-Checker/issues"
+  },
+  "homepage": "https://github.com/Tirtha2001/ATS-Checker#readme",
+  "dependencies": {
+    "docx-parser": "^0.2.1",
+    "express": "^4.21.1",
+    "multer": "^1.4.5-lts.1",
+    "natural": "^8.0.1",
+    "pdf-parse": "^1.1.1"
+  }
+}
