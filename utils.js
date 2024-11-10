@@ -2,46 +2,31 @@ const fs = require('fs');
 const pdfParse = require('pdf-parse');
 const docxParser = require('docx-parser');
 const natural = require('natural');
-const path = require('path');
 
-/**
- * Extracts text from PDF or DOCX files.
- * @param {string} filePath - Path to the file (PDF or DOCX).
- * @returns {Promise<string>} - Extracted text.
- */
-async function extractTextFromFile(filePath) {
-    const extension = path.extname(filePath).toLowerCase();
-    console.log(`Extracting text from file: ${filePath} with extension: ${extension}`);
+async function extractTextFromFile(file) {
+    const { path, mimetype } = file;
 
-    if (extension === '.pdf') {
-        try {
-            const dataBuffer = fs.readFileSync(filePath);
-            const data = await pdfParse(dataBuffer);
-            return data.text;
-        } catch (error) {
-            throw new Error(`Error processing PDF file: ${error.message}`);
-        }
-    } else if (extension === '.docx') {
-        try {
-            return new Promise((resolve, reject) => {
-                docxParser.parseDocx(filePath, (data, error) => {
-                    if (error) reject(new Error(`Error processing DOCX file: ${error.message}`));
-                    resolve(data);
-                });
+    if (mimetype === 'application/pdf') {
+        const dataBuffer = fs.readFileSync(path);
+        const data = await pdfParse(dataBuffer);
+        return data.text;
+    } else if (mimetype === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
+        return new Promise((resolve, reject) => {
+            docxParser.parseDocx(path, (data) => {
+                resolve(data);
             });
-        } catch (error) {
-            throw new Error(`Error processing DOCX file: ${error.message}`);
-        }
+        });
     } else {
         throw new Error('Unsupported file type. Only PDF and DOCX are supported.');
     }
 }
 
-function getATSScore(jobDescriptionText, resumeText) {
+async function getATSScoreAndSuggestions(jobDescriptionText, resumeText) {
     const tokenizer = new natural.WordTokenizer();
     const jobTokens = tokenizer.tokenize(jobDescriptionText.toLowerCase());
     const resumeTokens = tokenizer.tokenize(resumeText.toLowerCase());
 
+    // Frequency maps for both job description and resume
     const jobFreq = jobTokens.reduce((acc, word) => {
         acc[word] = (acc[word] || 0) + 1;
         return acc;
@@ -53,16 +38,28 @@ function getATSScore(jobDescriptionText, resumeText) {
 
     const jobKeywords = Object.keys(jobFreq);
     let matchedKeywords = 0;
+    let missingKeywords = [];
+
     jobKeywords.forEach((word) => {
         if (resumeFreq[word]) {
             matchedKeywords += Math.min(jobFreq[word], resumeFreq[word]);
+        } else {
+            missingKeywords.push(word);
         }
     });
 
     const totalJobKeywords = jobTokens.length;
     const score = (matchedKeywords / totalJobKeywords) * 100;
 
-    return parseFloat(score.toFixed(2));
+    // Suggestions: Highlight missing keywords in a user-friendly message
+    const suggestions = missingKeywords.length
+        ? `Consider including these keywords to improve your match score: ${missingKeywords.join(', ')}.`
+        : "Your resume matches most of the job description's key requirements!";
+
+    return {
+        atsScore: parseFloat(score.toFixed(2)),
+        suggestions,
+    };
 }
 
-module.exports = { extractTextFromFile, getATSScore };
+module.exports = { extractTextFromFile, getATSScoreAndSuggestions };
