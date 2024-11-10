@@ -2,6 +2,7 @@ const express = require('express');
 const multer = require('multer');
 const fs = require('fs');
 const { extractTextFromFile, getATSScoreAndSuggestions } = require('./utils');
+require('dotenv').config(); // Load environment variables from .env file
 
 const app = express();
 const upload = multer({ dest: 'uploads/' });

@@ -1,7 +1,11 @@
 const fs = require('fs');
 const pdfParse = require('pdf-parse');
 const docxParser = require('docx-parser');
-const natural = require('natural');
+const cohere = require('cohere-ai'); // Import Cohere SDK
+require('dotenv').config(); // Load environment variables from .env file
+
+// Initialize Cohere client
+const cohereClient = new cohere.CohereClient({token:process.env.COHERE_API_KEY});
 
 async function extractTextFromFile(file) {
     const { path, mimetype } = file;
@@ -22,44 +26,50 @@ async function extractTextFromFile(file) {
 }
 
 async function getATSScoreAndSuggestions(jobDescriptionText, resumeText) {
-    const tokenizer = new natural.WordTokenizer();
-    const jobTokens = tokenizer.tokenize(jobDescriptionText.toLowerCase());
-    const resumeTokens = tokenizer.tokenize(resumeText.toLowerCase());
+    const prompt = `
+        Job Description:
+        ${jobDescriptionText}
 
-    // Frequency maps for both job description and resume
-    const jobFreq = jobTokens.reduce((acc, word) => {
-        acc[word] = (acc[word] || 0) + 1;
-        return acc;
-    }, {});
-    const resumeFreq = resumeTokens.reduce((acc, word) => {
-        acc[word] = (acc[word] || 0) + 1;
-        return acc;
-    }, {});
+        Resume:
+        ${resumeText}
 
-    const jobKeywords = Object.keys(jobFreq);
-    let matchedKeywords = 0;
-    let missingKeywords = [];
+        Analyze the resume and job description. Provide an ATS score based on how well the resume matches the job description. Also, suggest any improvements for the resume to better align with the job description.
+    `;
 
-    jobKeywords.forEach((word) => {
-        if (resumeFreq[word]) {
-            matchedKeywords += Math.min(jobFreq[word], resumeFreq[word]);
-        } else {
-            missingKeywords.push(word);
+    let attempts = 0;
+    const maxAttempts = 5;
+
+    while (attempts < maxAttempts) {
+        try {
+            const response = await cohereClient.chat({
+                model: 'command-r-plus',  // Using the 'xlarge' model for better performance
+                // messages: [{ role: 'user', content: prompt }],
+                message:prompt,
+                max_tokens: 200,
+                temperature: 0.6,
+            });
+
+            const atsScore = response.text.trim().match(/ATS Score: (\d+\.?\d*)/);
+            const atsScoreValue = atsScore ? atsScore[1] : "N/A";
+            const suggestions = response.text.trim();
+
+            return {
+                atsScore: atsScoreValue,
+                suggestions: suggestions || "Your resume aligns well with the job description requirements!",
+            };
+        } catch (error) {
+            if (error.response && error.response.status === 429) {
+                attempts++;
+                const delay = Math.pow(2, attempts) * 1000; // Exponential backoff
+                console.log(`Rate limit hit. Retrying in ${delay / 1000} seconds...`);
+                await new Promise(resolve => setTimeout(resolve, delay));
+            } else {
+                throw error;
+            }
         }
-    });
+    }
 
-    const totalJobKeywords = jobTokens.length;
-    const score = (matchedKeywords / totalJobKeywords) * 100;
-
-    // Suggestions: Highlight missing keywords in a user-friendly message
-    const suggestions = missingKeywords.length
-        ? `Consider including these keywords to improve your match score: ${missingKeywords.join(', ')}.`
-        : "Your resume matches most of the job description's key requirements!";
-
-    return {
-        atsScore: parseFloat(score.toFixed(2)),
-        suggestions,
-    };
+    throw new Error('Exceeded maximum retry attempts');
 }
 
 module.exports = { extractTextFromFile, getATSScoreAndSuggestions };
